@@ -1,0 +1,346 @@
+# Maria Stalteri
+# 28/08/2012
+# HiSeq_processing_shortg.txt
+
+# code for trimmomatic trimming and velvet assembly of HiSeq data
+
+# 1. Run FastQC:
+
+    $  /db/mariad/Norwich_hiseq/maria_software/FastQC/fastqc \
+    --nogroup -o fastqc_res/  \
+    HS_Sample_LIB955/LIB955_ACTTGA_L002_R1.fastq 
+
+    # repeat for the file with the second reads;     
+    $  /db/mariad/Norwich_hiseq/maria_software/FastQC/fastqc \
+    --nogroup -o fastqc_res/  \
+    HS_Sample_LIB955/LIB955_ACTTGA_L002_R2.fastq
+
+    # Remove .zip version of files:
+    $ cd fastqc_res/
+    $ ls -lt
+    $ rm *.zip
+
+    # Have a look at the FastQC output:
+    $ cd LIB955_ACTTGA_L002_R2_fastqc/
+    $ ls -lt
+    $ firefox fastqc_report.html
+    
+    # ctrl-q to quit firefox and return to command line;
+    # repeat to view the other file (results for R1);
+    
+# 2. Run Trimmomatic:
+    $  nohup  java -classpath \
+    /db/mariad/Norwich_hiseq/maria_software/Trimmomatic-0.22/trimmomatic-0.22.jar \ 
+    org.usadellab.trimmomatic.TrimmomaticPE -threads 8 -phred33 \
+    -trimlog LIB955_R1R2_99Tr3Le3Sl20Min35_trim.log \
+    ../HS_Sample_LIB955/LIB955_ACTTGA_L002_R1.fastq  ../HS_Sample_LIB955/LIB955_ACTTGA_L002_R2.fastq  \
+    LIB955_R1_trim_99Tr3Le3Sl20Min35.fastq   LIB955_R1_trim_99Tr3Le3Sl20Min35_unp.fastq \
+    LIB955_R2_trim_99Tr3Le3Sl20Min35.fastq   LIB955_R2_trim_99Tr3Le3Sl20Min35_unp.fastq  \
+    CROP:99 TRAILING:3 LEADING:3 SLIDINGWINDOW:4:20  MINLEN:35
+    
+# 3. Repeat FastQC on the trimmed reads, to see the effect of trimming on the overall  read qualities;
+     
+     # run FastQC on each of the 4 trimmomatic PE output files;
+     # I have found that the unpaired reads seem to be of slightly lower quality
+     # than the paired reads, so I have usually left them out of further analyses;
+
+     /dd/maria_assemc/trim_HS_LIB955$ 
+     /db/mariad/Norwich_hiseq/maria_software/FastQC/fastqc 
+     --nogroup -o ../fastqc_res/  
+     LIB955_R1_trimTr3Le3Sl20Min35.fastq 
+
+     /dd/maria_assemc/trim_HS_LIB955$ 
+     /db/mariad/Norwich_hiseq/maria_software/FastQC/fastqc 
+     --nogroup -o ../fastqc_res/  
+     LIB955_R2_trim_99Tr3Le3Sl20Min35.fastq 
+
+     /dd/maria_assemc/trim_HS_LIB955$ 
+     /db/mariad/Norwich_hiseq/maria_software/FastQC/fastqc 
+     --nogroup -o ../fastqc_res/
+     LIB955_R1_trim_99Tr3Le3Sl20Min35_unp.fastq 
+
+     /dd/maria_assemc/trim_HS_LIB955$ 
+     /db/mariad/Norwich_hiseq/maria_software/FastQC/fastqc 
+     --nogroup -o ../fastqc_res/  
+     LIB955_R2_trim_99Tr3Le3Sl20Min35_unp.fastq 
+
+     # view the FastQC files as in 1. above;
+
+# 4. Run velvetk to estimate kmer coverage for de novo assembly;
+
+     /dd/maria_assemc/trim_HS_LIB955/HS_trim_assem$ 
+     /db/mariad/Norwich_hiseq/maria_software/velvet_1.2.03/contrib/velvetk/velvetk.pl 
+     --verbose --size=2.7M 
+     ../LIB955_R1_trim_99Tr3Le3Sl20Min35.fastq 
+     ../LIB955_R2_trim_99Tr3Le3Sl20Min35.fastq  > 
+     LIB955_R1_R2_trim_99Tr3Le3Sl20Min35_velvk.txt
+
+# 5. Run shuffle sequences - the version of velvet currently installed  requires the paired reads
+     to be together in one file; the latest version of velvet has dispensed with that requirement;
+
+      /dd/maria_assemc/trim_HS_LIB955$
+      /db/mariad/Norwich_hiseq/maria_software/velvet_1.2.03/shuffleSequences_fastq.pl 
+      LIB955_R1_trim_99Tr3Le3Sl20Min35.fastq LIB955_R2_trim_99Tr3Le3Sl20Min35.fastq  
+      LIB955_R1R2_trim_99Tr3Le3Sl20Min35_shuffled.fastq 
+
+# 6. Run velveth
+
+      # can be run using a range of kmer lengths
+      nohup /db/mariad/Norwich_hiseq/maria_software/velvet_1.2.03/velveth \
+      velvet_aug2012/LIB955_run8_trim35_vark/  81,97,4  \
+      -shortPaired -fastq \
+      /dd/maria_assemc/trim_HS_LIB955/LIB955_R1R2_trim_99Tr3Le3Sl20Min35_shuffled.fastq 
+ 
+# 7. Run velvetg for all the different kmer lengths
+
+       nohup /db/mariad/Norwich_hiseq/maria_software/velvet_1.2.03/velvetg LIB955_run8_trim35_vark/_93
+
+       nohup /db/mariad/Norwich_hiseq/maria_software/velvet_1.2.03/velvetg LIB955_run8_trim35_vark/_89
+
+       nohup /db/mariad/Norwich_hiseq/maria_software/velvet_1.2.03/velvetg LIB955_run8_trim35_vark/_85
+
+       nohup /db/mariad/Norwich_hiseq/maria_software/velvet_1.2.03/velvetg LIB955_run8_trim35_vark/_81
+
+# 8. Run velvetg again, after choosing the kmer length that gives the best n50
+
+      /db/mariad/Norwich_hiseq/velvet_aug2012$ 
+      nohup /db/mariad/Norwich_hiseq/maria_software/velvet_1.2.03/velvetg 
+      LIB955_run8_trim35_vark/_97  -exp_cov auto -cov_cutoff auto 
+
+# 9. velvetg again;
+
+     Compare -exp_cov calculated by velvet to that calculated by velvetk;
+     Decide on a coverage cutoff;
+
+     /db/mariad/Norwich_hiseq/velvet_aug2012$ 
+     nohup /db/mariad/Norwich_hiseq/maria_software/velvet_1.2.03/velvetg \
+     LIB955_run8_trim35_vark/_97  
+     -exp_cov 218 -cov_cutoff 0 -ins_length 384 -ins_length_sd 71 
+
+# 10. run the velvet script observed-insert-length.pl, which calculates insert length for paired 
+      end reads, based on the current assembly;
+
+      /db/mariad/Norwich_hiseq/velvet_aug2012$  
+      /db/mariad/Norwich_hiseq/maria_software/velvet_1.2.03/contrib/observed-insert-length.pl/observed-insert-length.pl   \
+      LIB955_run8_trim35_vark/_97    > \
+      LIB955_run8_trim35_vark/_97/LIB955_run8_trim35_k97_obs_ins_len.txt
+
+# 11. run velvetg again, use parameters (rounded off) calculated from observed-insert-length.pl,
+      get the program to produce an .afg file of the assembly;
+  
+      /db/mariad/Norwich_hiseq/velvet_aug2012$ 
+      nohup  /db/mariad/Norwich_hiseq/maria_software/velvet_1.2.03/velvetg \
+      LIB955_run8_trim35_vark/_97  \
+      -exp_cov 218 -cov_cutoff 0 -ins_length 400 -ins_length_sd 60 \
+      -amos_file yes -read_trkg yes -unused_reads yes 
+
+# 12. run velvetg again, see what effect other parameters have, here setting -min_contig_length
+
+      /db/mariad/Norwich_hiseq/velvet_aug2012$
+      nohup  /db/mariad/Norwich_hiseq/maria_software/velvet_1.2.03/velvetg 
+      LIB955_run8_trim35_vark/_97 \
+       -exp_cov 218 -cov_cutoff 0 -ins_length 400 -ins_length_sd 60 \
+      -amos_file yes -read_trkg yes -unused_reads yes -min_contig_lgth 900
+
+# 13. add long reads (Sanger tags) to assembly;
+      # do the last run with '-scaffolding no', to avoid joining contigs 
+      # with runs of Ns
+ 
+      # velveth
+
+      /db/mariad/Norwich_hiseq/velvet_aug2012$ 
+      nohup  /db/mariad/Norwich_hiseq/maria_software/velvet_1.2.03/velveth \
+      LIB955_run9_trim35_k97_Sanger/  97 \
+      -shortPaired -fastq  /dd/maria_assemc/trim_HS_LIB955/LIB955_R1R2_trim_99Tr3Le3Sl20Min35_shuffled.fastq \
+      -long -fasta /dd/maria_assemc/SangerTags/additional_Sanger_tags.fasta 
+
+      # velvetg
+       
+      /db/mariad/Norwich_hiseq/velvet_aug2012$ 
+      nohup  /db/mariad/Norwich_hiseq/maria_software/velvet_1.2.03/velvetg \
+      LIB955_run9_trim35_k97_Sanger/ \
+      -exp_cov 218 -cov_cutoff 0 -ins_length 400 -ins_length_sd 60 -read_trkg yes
+
+      # velvetg - use additional parameters
+
+      /db/mariad/Norwich_hiseq/maria_software/velvet_1.2.03/velvetg \
+      LIB955_run9_trim35_k97_Sanger/  \
+      -exp_cov 218 -cov_cutoff 0 -ins_length 400 -ins_length_sd 60 
+      -read_trkg yes -conserveLong yes -unused_reads yes -amos_file yes -min_contig_lgth 900
+
+      # velvetg - use '-scaffolding no' to avoid contigs joined by stretches of Ns
+
+      /db/mariad/Norwich_hiseq/maria_software/velvet_1.2.03/velvetg 
+      LIB955_run9_trim35_k97_Sanger/ 
+      -exp_cov 218 -cov_cutoff 0 -ins_length 400 -ins_length_sd 60 
+      -read_trkg yes -conserveLong yes -amos_file yes -scaffolding no
+
+# 14. align reads to Xenopus victorianus mito sequences with bowtie;
+
+# 14a. make bowtie index with the 3K of X. victorianus mito sequences:
+
+       bowtie-build Xvictorianus_ncbi_mito_part_0912.fasta bowtie_indexes_Diphyllo/Xvictorianus_mito_part
+
+# 14b. align with bowtie:
+
+       /dc/maria_bowtie_xen$  
+       bowtie -t -S -p 8 --chunkmbs 3000 -q --best 
+       ~/cam_miseq/bowtie_indexes_Diphyllo/Xvictorianus_mito_part  
+       /dd/maria_assemc/trim_HS_LIB955/LIB955_R1_trim_99Tr3Le3Sl20Min35.fastq,
+       /dd/maria_assemc/trim_HS_LIB955/LIB955_R2_trim_99Tr3Le3Sl20Min35.fastq  > 
+       LIB955_R1R2_trim35_Xvict_bowtie.sam
+
+# 15.  process the sam file with samtools to extract the aligned reads;
+     
+# 15a. get the samfile header: 
+
+       samtools view -H -S LIB955_R1R2_trim35_Xvict_bowtie.sam > LIB955_R1R2_trim35_Xvict_bowtie_header.sam 
+
+# 15b. convert sam to bam:
+       
+       samtools view -S -b -o LIB955_R1R2_trim35_Xvict_bowtie.bam LIB955_R1R2_trim35_Xvict_bowtie.sam 
+
+# 15c. get some stats on the alignment:
+
+       samtools flagstat LIB955_R1R2_trim35_Xvict_bowtie.bam  > LIB955_R1R2_trim35_Xvict_bowtie_stats.txt
+
+# 15d. 
+      
+********************************************************************************
+# more detailed notes:
+
+#     \ at end of line: Linux command is continued on the next line
+
+#     nohup: tells computer not to hang up, not to stop the process running on the remote server
+             if you log out from the local machine;
+
+#     the perl scripts shuffleSequences_fastq.pl, velvetk.pl, observed-insert-length.pl come with velvet,
+      and are found in the contrib directory (contributed scripts), except for shuffleSequences_fastq.pl
+      which is in the main velvet directory;
+
+
+# 1.  FastQC
+   
+    --nogroup   gives a more spread out plot of per base sequence quality, plotting qualities for
+                each base position, rather than plotting the quality for ranges of base positions;
+
+    -o          name of the directory where fastqc should put the output files and directories;
+
+
+    .zip files  when run from the command line, fastqc produces two versions of the results, a zipped
+                file, and a directory containing the results - a html page, pictures, a text file;
+                I usually delete the zipped files, but they might be convenient if one needed to send the
+                results to another computer, because the .zip version is a single file and more compact;
+
+                The main results files are fastqc_results.html, which can be viewed in a browser,
+                and shows the plots that are in the Images folder, and fastqc_data.txt, which is 
+                just a text file, with no images, and gives the data which is shown in the plots.
+
+# 2. Trimmomatic
+ 
+     nohup: running Trimmomatic on the HiSeq dataset takes about 2.5 hr (with 8 threads) on the server,
+            if you don't use nohup, the computer logs you off, and the program gets aborted part way through; 
+     
+     java -classpath path_to_trimmomatic_jar_file org.usadellab.trimmomatic.TrimmomaticPE
+
+     The base qualities scale for Illumina v1.9 is phred33;
+     Note that the default for trimmomatic 0.22 is phred64 (the earlier Illumina format);
+
+     For PE: Input and output file names are in order:
+     Read1_file Read2_file Read1_paired_surviving_reads Read1_unpaired_reads 
+     Read2_paired_surviving_reads Read2_unpaired_reads
+
+     Trimming procedures:
+     CROP: cuts read to a specific length, the number of bases to keep, from the start of the read;
+ 
+     TRAILING: remove bases that are below a certain quality value from the 3' end of the read
+     Ns are quality symbol #, which is quality 2 in phred33, so setting TRAILING:3 removes Ns
+     (and other low qual bases from the 3' end);
+  
+     LEADING: as for TRAILING, but from the 5' end of the read;
+    
+     SLIDINGWINDOW: first parameter is the number of bases to average qualities over,
+                    second parameter is the average quality cutoff
+
+     MINLEN: remove reads shorter than this length;
+
+# 3. FastQC
+
+# 4. velvetk
+
+     velvetk.pl is a contibuted script that comes with velvet;    
+     Need to specify a genome size, kmer coverage depends on genome size;
+     Need to specify output file with >, otherwise it prints the output to the screen.   
+
+    velvetk assumes that the optimal kmer coverage is 25;
+    if run with the parameter --best, it outputs only the kmer length that gives a kmer
+    coverage closest to 25;
+    other discussions on the mailing list by the author of velvetk have also suggested 30 
+    as a good kmer coverage for velvet;
+
+# 5. shuffle sequences
+     
+     shuffleSequences_fastq.pl is a perl script that comes with velvet;
+     
+     Usage is:
+     shuffleSequences_fastq.pl read1_input_file read2_input_file shuffled_reads_output_file
+
+     the script interleaves the pairs of reads into one file;
+     note that the script is very basic, and doesn't do any checking, so the files with read1 and read2
+     must have the reads from each pair in the same order, otherwise this will not work as it is intended to;
+
+# 6. velveth
+
+     Note that velvet may need to be recompiled to allow multi-threading ('OPENMP=1'), longer kmer lengths
+     ('MAXKMERLENGTH=151'), or more than two categories of reads; see the Velvet manual;
+     The options that allow more categories of reads, or longer kmer lengths probably use more memory,
+     so if velvet is having memory problems, it might be a good idea to recompile using only the number of
+     read categories or kmer length you need for the current assembly;
+
+     Options that save disk space for velveth: -reuse_Sequences, and -create_binary
+
+     velveth can try several kmer lengths in one run: velveth directory min,max,step_size;
+     kmer lengths (min, max) must be odd numbers, and step_size must be an even number;
+     velveth seems to go up to, but not including, the kmer length specified as max,
+     so for 'velveth directory 81,97,4', velveth will try kmer lengths 81, 85, 89, 93, 
+     but not 97;
+     velveth creates subdirectories for each of the kmer lengths in the run directory, for example:
+     /_81, /_85, /_89, and so on;
+     I haven't found a way of automatically getting velvetg to run each one of those kmer sizes on its
+     own though;
+
+# 7. velvetg
+
+      for velvetg to operate in paired end mode, both -exp_cov and -ins_length must be specified;
+      initially just run velvetg to determine which kmer length gives best n50;
+
+# 8. velvetg
+
+      after choosing the best n50, play with other parameters, 
+      velvetg can determine the -exp_cov  from the data; 
+      the default value of -cov_cutoff that velvet will use is  half of the  -exp_cov;
+
+# 9. velvetg
+
+      see the notes for item 7;
+
+# 10. velvet - observed-insert-length.pl
+
+      by default this prints output to screen, to redirect to a file, use > ;
+   
+      the run gave parameters -ins_length 391, -ins_length_sd 63;
+      these are based on the current assembly, which uses about 1/3 of the reads;
+      I decided to round the values slightly to -ins_length 400 and -ins_length_sd 60
+
+# 11. velvet - velvet_asm.afg
+
+      genome browsers like Tablet and Hawkeye use files in .ace or .afg format,
+      so the assembler needs to produce something in that format if you want to
+      view the assembly;
+      velvet will produce an .afg file if you use the parameter '-amos_file yes';
+
+# 12. velvetg - -min_contig_length 
+
+      length is in kmers;
+      many of the parameters use length (or coverage) in kmers rather than bases,
+      see the manual;
