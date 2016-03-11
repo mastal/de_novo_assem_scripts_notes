@@ -1,0 +1,174 @@
+# Maria Stalteri
+# 25/11/2011
+# simulation_procedure_shortg.txt
+
+
+# 1. Get the RefSeq mitochondrial genome sequences (in fasta format) from ncbi;
+#    Folder has files for all the mitochondrial genomes, accessions are NC_dddddd.d
+   
+   ftp:ncbi.nih.gov/release/mitochondrion
+
+#  27/02/2012 I didn't get them from the blastdb or refseq download web pages, I got them from:
+   http://www.ncbi.nlm.nih.gov/genome
+
+   ftp/download
+   genomes/mitochondria/metazoa
+
+# 2. # skipped this step for the cases where I only used a single mito genome (S. mansoni)
+#    Select the files for 10 helminths, no two from same genus,
+#    Download the selected files into one folder;
+#    Concatenate the 10 files into one fasta file;
+
+   cat NC_*.fna > NC_10helminth_mito_genomes.fna
+
+# 3. Flowsim/Newbler problem
+#   Flowsim adds info about the read location on the genome sequence to the fasta headers;
+#   Newbler takes all the info in the fasta header lines up to the first space as the read identifier,
+#   and discards the rest, thereby discarding the info added by flowsim;
+
+#   Used a perl script, removeSpacesFromFastaHeader2.pl, to remove everything on the header lines after the first space;
+#   this leaves the gi number and the RefSeq accession followed by a '|';
+#   Flowsim appends info to the header lines starting with ':', and no spaces except before the last word 'clonesim', 
+    which is then deleted by Newbler;
+
+# ./removeSpacesFromFastaHeader2.pl NC_002545.fna > NC_002545_remove_spaces2.fna 
+  ./removeSpacesFromFastaHeader2.pl  NC_10helminth_mito_genomes.fna > NC_10helminth_mito_genomes_rem_sp.fna 
+
+# 4. Run clonesim/kitsim/flowsim, in individual steps, so that you get the intermediate output files;
+#    Get the programs to generate 15,000 454 reads; 1500 reads for the run with the single genome;
+
+    clonesim -c 1500 ~/simulations/mito_genomes/10_helminths_for_flowsim/mito_sequences/NC_002545_remove_spaces2.fna  > Smansoni_1500sim1_run3b_tmp
+    kitsim Smansoni_1500sim1_run3b_tmp > Smansoni_1500sim1_run3b_tmp3
+    flowsim Smansoni_1500sim1_run3b_tmp3 -o Smansoni_1500sim1_run3b.sff
+
+#   clonesim -c 15000  ~/simulations/mito_genomes/10_helminths_for_flowsim/mito_sequences/NC_10helminth_mito_genomes_rem_sp.fna > 10Helminths_sim2_run1_tmp 
+#   kitsim 10Helminths_sim2_run1_tmp > 10Helminths_sim2_run1_tmp3
+
+# 5. Run Newbler
+   
+#    Check that the sff files produced by flowsim are OK;
+#    Use sff_info, which is part of the Roche 454 software, to extract sequences and accession numbers from the sff files
+
+#    sffinfo seems to show a few reads less than the total produced by clonesim/kitsim (1495/1500), not sure at what level these are     
+#    being lost, if it is flowsim, since the output is sff files, which are binary, or the Roche software;
+#    also not sure why, whether some sequences start too close to the end of the genomic sequence so might be too short, or
+#    whether they are duplicates;
+
+  sffinfo -seq ~/flowsim_results/Smansoni_1500sim1_run3b.sff  >  ~/flowsim_results/Smansoni_1500sim1_run3b_seqs.fasta
+  sffinfo -accno ~/flowsim_results/Smansoni_1500sim1_run3b.sff  >  ~/flowsim_results/Smansoni_1500sim1_run3b_accno.txt
+
+#    Newbler 454ReadStatus.txt output file is the one with info about each read - where it got assembled into the contigs;
+
+  runAssembly ~/flowsim_results/Smansoni_1500sim1_run3b.sff
+
+#    submitted the runAssembly job to the cluster, using a shell script;
+ 
+  qsub submit_newbler.sh 
+
+# 6. Run Mira
+
+#    Need to convert the sff files produced by flowsim into fastq and xml files for mira;
+#    use sff_extract, see http://bioinf.comav.upv.es/sff_extract/usage.html
+
+#    Note that the input files for Mira need to be named in a particular way, it's not enough just to have the right
+#    type of file extension;
+#    Otherwise Mira throws an Exception and exits;
+
+  sff_extract -Q -s mira_projects/mira_flowsim/Sman_sim1run3b/mira_run1_Sman_sim1run3b_in.454.fastq \
+  -x mira_projects/mira_flowsim/Sman_sim1run3b/mira_run1_Sman_sim1run3b_traceinfo_in.454.xml  Smansoni_1500sim1_run3b.sff
+
+#    run miramem to get a very rough estimate of how much memory the assembly with Mira will take
+#    type 'miramem' and answer the questions;
+
+   miramem
+
+#    submit the mira job to the cluster
+   qsub submit_mira.sh
+
+#    the mira command submitted with the shell script was:
+  mira --project=mira_run1_Sman_sim1run3b  --job=denovo,genome,accurate,454   >&log_assembly.txt
+  
+#    Mira output files:
+#    padded.fasta files include '*' characters in the sequence; unpadded.fasta files have the '*'characters removed;
+#    The info folder and results folder are the most useful;
+#    The -info_contigstats.txt summarizes data for all the contigs;
+
+# 7. Have a look at the contigs with Tablet
+
+#    Tablet reads .ace format files from Newbler output
+
+# 8. Blast the contigs from Newbler/Mira against the mito genome sequences;
+
+#    Make the mito genome sequences into a formatted blastplus database;
+
+#    Configure blast by modifying the .ncbirc file (In my home dir):
+#    Append the following lines (and note that on Mac OSX the home dir is /Users/username):
+
+#  [BLAST]
+#  BLASTDB=/home/username/blastplus_databases
+
+#    Make a formatted blastplus database with the 10 helminth mitochondrial genomes:
+#    Ran the shell script 'do_makeblastdb_10helminth.sh', which contains the following command:
+
+  makeblastdb -in ~/blastplus_databases/NC_10helminth_mito_genomes.fna \
+  -input_type fasta \
+  -dbtype nucl \
+  -parse_seqids \
+  -hash_index   \
+  -logfile ~/blastplus_databases/log_makeblastdb_10helm_nov22.txt \
+  -out ~/blastplus_databases/10helm_nov2011/10helm_mito_refseq_nov2011 \
+  -title "10 Helminth Mitochondria, RefSeq, Nov 2011"
+
+#    Check some of the other blastdb commands:
+   blastdbcmd -show_blastdb_search_path  
+   blastdbcmd -list blastplus_databases -recursive
+   blastdbcmd -info -db 10helm_nov2011/10helm_mito_refseq_nov2011  
+
+#   'blastdbcmd -list foldername' only seems to work if the folder you tell it to search is a subfolder
+#     of the cwd, it doesn't seem to work from any other directory;
+
+#    Run a megablast search with the mitochondrial genomes as database and the assembled contigs
+#    from Newbler or Mira as the query;
+#    query is stored as the shell script 'do_megablast_10helm_newbler.sh'
+
+    blastn -task megablast \
+    -db 10helm_nov2011/10helm_mito_refseq_nov2011 \
+    -query ~/newbler_results/P_2011_11_08_16_47_08_runAssembly/454AllContigs.fna \
+    -parse_deflines \
+    -out blast_newbler_10helm_sim1.txt \
+    -outfmt 7
+
+#   Next time, try using a megablast index (makembindex);
+#   Get it to produce ASN.1 output, and extract tabular output from the ASN.1
+#   Use a cutoff, maybe 90%, for the %identity;
+
+
+# 9. Run the Mira contigs through CAP3
+
+#     Make a subdirectory in the /home/user/cap3_results dir to hold the cap3 results;
+#     Copy the mira unpadded.fasta and unpadded.fasta.qual files from the mira results dir to the cap3_results subdirectory;
+#     Write a shell script to run cap3;
+#     Run cap3 via the shell script;
+
+#     This code was used for the Smansoni and 10helminth simulations:
+
+#     Run cap3 from a shell script, run it from the cap3_results subdirectory
+ ./ do_cap3_mira_contigs.sh
+ 
+#     Contents of the shell script:
+
+ cap3 \
+ /home/user/cap3_results/10helminths/mira_run2_10helm_sim2run1_out.unpadded.fasta \
+ -x cap3 \
+  > cap3_mira_10helminth.txt
+
+# 9b. For the Echino mira results, I wrote a shell script which used two loops to run cap3
+#     for each of the 9 mira runs;
+
+ ./run_cap3_mira_output.sh
+
+#     The shell script is in the cap3_results directory. 
+
+# 10. The results of mira+cap3 were put through megablast, using the Echino/taenia genomes as 
+#     blast database, as above for the results of newbler and mira.
+#     See step 8, blastn and blastformatter.
